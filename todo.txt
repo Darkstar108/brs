@@ -2,3 +2,4 @@ Things to do:
 	- Add pictures to BRS++ paper.
 	- Training scripts.
 	- Encoder-Decoder concat layer situation.
+	- testing git (delete later)
