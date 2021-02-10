@@ -330,15 +330,21 @@ class KitModel(nn.Module):
         self.conv_p1_1 = self.__conv(2, name='conv_p1_1', in_channels=48, out_channels=16, kernel_size=(3, 3), stride=(1, 1), groups=1, bias=False)
         self.bn_p1_1 = self.__batch_normalization(2, 'bn_p1_1', num_features=16, eps=9.999999747378752e-06, momentum=0.0)
         self.pred_step_2 = self.__conv(2, name='pred_step_2', in_channels=16, out_channels=1, kernel_size=(1, 1), stride=(1, 1), groups=1, bias=True)
+        self.deconv_1_16d = nn.ConvTranspose2D(in_channels=256, out_channels=256, kernel_size=2, stride=2, bias=False)
+        self.deconv_1_8d = nn.ConvTranspose2D(in_channels=128, out_channels=256, kernel_size=2, stride=2, bias=False)
+        self.deconv_1_4d = nn.ConvTranspose2D(in_channels=64, out_channels=256, kernel_size=2, stride=2, bias=False)
+        self.pred_step_1 = nn.ConvTranspose2D(in_channels=1, out_channels=1, kernel_size=4, stride=4, bias=False)
 
     def forward(self, x):
         concat_input    = torch.cat((x, x,), 1)
         conv1_pad       = F.pad(concat_input, (3, 3, 3, 3))
+
         conv1           = self.conv1(conv1_pad)
         conv1_bn        = self.conv1_bn(conv1)
         relu1           = F.relu(conv1_bn)
         pool1_pad       = F.pad(relu1, (1, 1, 1, 1), value=float('-inf'))
         pool1, pool1_idx = F.max_pool2d(pool1_pad, kernel_size=(3, 3), stride=(2, 2), padding=0, ceil_mode=False, return_indices=True)
+
         conv2_1_x1_bn   = self.conv2_1_x1_bn(pool1)
         relu2_1_x1      = F.relu(conv2_1_x1_bn)
         conv2_1_x1      = self.conv2_1_x1(relu2_1_x1)
@@ -346,7 +352,9 @@ class KitModel(nn.Module):
         relu2_1_x2      = F.relu(conv2_1_x2_bn)
         conv2_1_x2_pad  = F.pad(relu2_1_x2, (1, 1, 1, 1))
         conv2_1_x2      = self.conv2_1_x2(conv2_1_x2_pad)
+
         concat_2_1      = torch.cat((pool1, conv2_1_x2,), 1)
+
         conv2_2_x1_bn   = self.conv2_2_x1_bn(concat_2_1)
         relu2_2_x1      = F.relu(conv2_2_x1_bn)
         conv2_2_x1      = self.conv2_2_x1(relu2_2_x1)
@@ -354,7 +362,9 @@ class KitModel(nn.Module):
         relu2_2_x2      = F.relu(conv2_2_x2_bn)
         conv2_2_x2_pad  = F.pad(relu2_2_x2, (1, 1, 1, 1))
         conv2_2_x2      = self.conv2_2_x2(conv2_2_x2_pad)
+
         concat_2_2      = torch.cat((concat_2_1, conv2_2_x2,), 1)
+
         conv2_3_x1_bn   = self.conv2_3_x1_bn(concat_2_2)
         relu2_3_x1      = F.relu(conv2_3_x1_bn)
         conv2_3_x1      = self.conv2_3_x1(relu2_3_x1)
@@ -386,28 +396,20 @@ class KitModel(nn.Module):
         relu2_6_x2      = F.relu(conv2_6_x2_bn)
         conv2_6_x2_pad  = F.pad(relu2_6_x2, (1, 1, 1, 1))
         conv2_6_x2      = self.conv2_6_x2(conv2_6_x2_pad)
+
         concat_2_6      = torch.cat((concat_2_5, conv2_6_x2,), 1)
+        
         conv2_blk_bn    = self.conv2_blk_bn(concat_2_6)
-        pool_SE_1_4     = F.avg_pool2d(concat_2_6, kernel_size=(120, 120), stride=(1, 1), padding=(0,), ceil_mode=False, count_include_pad=False)
         relu2_blk       = F.relu(conv2_blk_bn)
-        conv_SE_1_4_1   = self.conv_SE_1_4_1(pool_SE_1_4)
         conv2_blk       = self.conv2_blk(relu2_blk)
-        relu_SE_1_4_1   = F.relu(conv_SE_1_4_1)
         pool2           = F.avg_pool2d(conv2_blk, kernel_size=(2, 2), stride=(2, 2), padding=(0,), ceil_mode=True, count_include_pad=False)
-        conv_SE_1_4_2   = self.conv_SE_1_4_2(relu_SE_1_4_1)
         conv3_1_x1_bn   = self.conv3_1_x1_bn(pool2)
-        sigm_SE_1_4     = F.sigmoid(conv_SE_1_4_2)
         relu3_1_x1      = F.relu(conv3_1_x1_bn)
-        reshape_SE_1_4  = torch.reshape(input = sigm_SE_1_4, shape = (1,256,1,1))
         conv3_1_x1      = self.conv3_1_x1(relu3_1_x1)
-        scale_SE_1_4    = concat_2_6 * reshape_SE_1_4
         conv3_1_x2_bn   = self.conv3_1_x2_bn(conv3_1_x1)
-        conv_SE_1_4     = self.conv_SE_1_4(scale_SE_1_4)
         relu3_1_x2      = F.relu(conv3_1_x2_bn)
-        prelu_SE_1_4    = F.prelu(conv_SE_1_4, torch.from_numpy(_weights_dict['prelu_SE_1/4']['weights']))
         conv3_1_x2_pad  = F.pad(relu3_1_x2, (1, 1, 1, 1))
         conv3_1_x2      = self.conv3_1_x2(conv3_1_x2_pad)
-        bn_SE_1_4       = self.bn_SE_1_4(prelu_SE_1_4)
         concat_3_1      = torch.cat((pool2, conv3_1_x2,), 1)
         conv3_2_x1_bn   = self.conv3_2_x1_bn(concat_3_1)
         relu3_2_x1      = F.relu(conv3_2_x1_bn)
@@ -498,26 +500,16 @@ class KitModel(nn.Module):
         conv3_12_x2     = self.conv3_12_x2(conv3_12_x2_pad)
         concat_3_12     = torch.cat((concat_3_11, conv3_12_x2,), 1)
         conv3_blk_bn    = self.conv3_blk_bn(concat_3_12)
-        pool_SE_1_8     = F.avg_pool2d(concat_3_12, kernel_size=(60, 60), stride=(1, 1), padding=(0,), ceil_mode=False, count_include_pad=False)
         relu3_blk       = F.relu(conv3_blk_bn)
-        conv_SE_1_8_1   = self.conv_SE_1_8_1(pool_SE_1_8)
         conv3_blk       = self.conv3_blk(relu3_blk)
-        relu_SE_1_8_1   = F.relu(conv_SE_1_8_1)
         pool3           = F.avg_pool2d(conv3_blk, kernel_size=(2, 2), stride=(2, 2), padding=(0,), ceil_mode=True, count_include_pad=False)
-        conv_SE_1_8_2   = self.conv_SE_1_8_2(relu_SE_1_8_1)
         conv4_1_x1_bn   = self.conv4_1_x1_bn(pool3)
-        sigm_SE_1_8     = F.sigmoid(conv_SE_1_8_2)
         relu4_1_x1      = F.relu(conv4_1_x1_bn)
-        reshape_SE_1_8  = torch.reshape(input = sigm_SE_1_8, shape = (1,512,1,1))
         conv4_1_x1      = self.conv4_1_x1(relu4_1_x1)
-        scale_SE_1_8    = concat_3_12 * reshape_SE_1_8
         conv4_1_x2_bn   = self.conv4_1_x2_bn(conv4_1_x1)
-        conv_SE_1_8     = self.conv_SE_1_8(scale_SE_1_8)
         relu4_1_x2      = F.relu(conv4_1_x2_bn)
-        prelu_SE_1_8    = F.prelu(conv_SE_1_8, torch.from_numpy(_weights_dict['prelu_SE_1/8']['weights']))
         conv4_1_x2_pad  = F.pad(relu4_1_x2, (1, 1, 1, 1))
         conv4_1_x2      = self.conv4_1_x2(conv4_1_x2_pad)
-        bn_SE_1_8       = self.bn_SE_1_8(prelu_SE_1_8)
         concat_4_1      = torch.cat((pool3, conv4_1_x2,), 1)
         conv4_2_x1_bn   = self.conv4_2_x1_bn(concat_4_1)
         relu4_2_x1      = F.relu(conv4_2_x1_bn)
@@ -704,17 +696,11 @@ class KitModel(nn.Module):
         conv4_24_x2     = self.conv4_24_x2(conv4_24_x2_pad)
         concat_4_24     = torch.cat((concat_4_23, conv4_24_x2,), 1)
         conv4_blk_bn    = self.conv4_blk_bn(concat_4_24)
-        pool_SE_1_16    = F.avg_pool2d(concat_4_24, kernel_size=(30, 30), stride=(1, 1), padding=(0,), ceil_mode=False, count_include_pad=False)
         relu4_blk       = F.relu(conv4_blk_bn)
-        conv_SE_1_16_1  = self.conv_SE_1_16_1(pool_SE_1_16)
         conv4_blk       = self.conv4_blk(relu4_blk)
-        relu_SE_1_16_1  = F.relu(conv_SE_1_16_1)
         pool4           = F.avg_pool2d(conv4_blk, kernel_size=(2, 2), stride=(2, 2), padding=(0,), ceil_mode=True, count_include_pad=False)
-        conv_SE_1_16_2  = self.conv_SE_1_16_2(relu_SE_1_16_1)
         conv5_1_x1_bn   = self.conv5_1_x1_bn(pool4)
-        sigm_SE_1_16    = F.sigmoid(conv_SE_1_16_2)
         relu5_1_x1      = F.relu(conv5_1_x1_bn)
-        reshape_SE_1_16 = torch.reshape(input = sigm_SE_1_16, shape = (1,1024,1,1))
         conv5_1_x1      = self.conv5_1_x1(relu5_1_x1)
         scale_SE_1_16   = concat_4_24 * reshape_SE_1_16
         conv5_1_x2_bn   = self.conv5_1_x2_bn(conv5_1_x1)
@@ -723,7 +709,6 @@ class KitModel(nn.Module):
         prelu_SE_1_16   = F.prelu(conv_SE_1_16, torch.from_numpy(_weights_dict['prelu_SE_1/16']['weights']))
         conv5_1_x2_pad  = F.pad(relu5_1_x2, (1, 1, 1, 1))
         conv5_1_x2      = self.conv5_1_x2(conv5_1_x2_pad)
-        bn_SE_1_16      = self.bn_SE_1_16(prelu_SE_1_16)
         concat_5_1      = torch.cat((pool4, conv5_1_x2,), 1)
         conv5_2_x1_bn   = self.conv5_2_x1_bn(concat_5_1)
         relu5_2_x1      = F.relu(conv5_2_x1_bn)
@@ -845,6 +830,10 @@ class KitModel(nn.Module):
         conv5_16_x2_pad = F.pad(relu5_16_x2, (1, 1, 1, 1))
         conv5_16_x2     = self.conv5_16_x2(conv5_16_x2_pad)
         concat_5_16     = torch.cat((concat_5_15, conv5_16_x2,), 1)
+
+        ################ SECONDARY NETWORK (COARSE DECODER) STARTS HERE ################
+
+		################ BLOCK 1 ################      
         pool_SE_1_32    = F.avg_pool2d(concat_5_16, kernel_size=(15, 15), stride=(1, 1), padding=(0,), ceil_mode=False, count_include_pad=False)
         conv_SE_1_32_1  = self.conv_SE_1_32_1(pool_SE_1_32)
         relu_SE_1_32_1  = F.relu(conv_SE_1_32_1)
@@ -852,95 +841,182 @@ class KitModel(nn.Module):
         sigm_SE_1_32    = F.sigmoid(conv_SE_1_32_2)
         reshape_SE_1_32 = torch.reshape(input = sigm_SE_1_32, shape = (1,1024,1,1))
         scale_SE_1_32   = concat_5_16 * reshape_SE_1_32
-        conv_1_32_1d_pad = F.pad(scale_SE_1_32, (1, 1, 1, 1))
+
+		conv_1_32_1d_pad = F.pad(scale_SE_1_32, (1, 1, 1, 1))
         conv_1_32_1d    = self.conv_1_32_1d(conv_1_32_1d_pad)
         prelu_1_32_1d   = F.prelu(conv_1_32_1d, torch.from_numpy(_weights_dict['prelu_1/32_1d']['weights']))
         bn_1_32_1d      = self.bn_1_32_1d(prelu_1_32_1d)
+
         conv_1_32_2d_pad = F.pad(bn_1_32_1d, (1, 1, 1, 1))
         conv_1_32_2d    = self.conv_1_32_2d(conv_1_32_2d_pad)
         prelu_1_32_2d   = F.prelu(conv_1_32_2d, torch.from_numpy(_weights_dict['prelu_1/32_2d']['weights']))
         bn_1_32_2d      = self.bn_1_32_2d(prelu_1_32_2d)
+
         conv_1_32_3d    = self.conv_1_32_3d(bn_1_32_2d)
         prelu_1_32_3d   = F.prelu(conv_1_32_3d, torch.from_numpy(_weights_dict['prelu_1/32_3d']['weights']))
         bn_1_32_3d      = self.bn_1_32_3d(prelu_1_32_3d)
+
+        deconv_1_16d	= self.deconv_1_16d(conv_1_32_3d)
         prelu_1_16d     = F.prelu(deconv_1_16d, torch.from_numpy(_weights_dict['prelu_1/16d']['weights']))
         bn_1_16d        = self.bn_1_16d(prelu_1_16d)
-        concat_1_16d    = torch.cat((bn_1_16d, bn_SE_1_16,), 1)
+
+        pool_SE_1_16    = F.avg_pool2d(concat_4_24, kernel_size=(30, 30), stride=(1, 1), padding=(0,), ceil_mode=False, count_include_pad=False)
+        conv_SE_1_16_1  = self.conv_SE_1_16_1(pool_SE_1_16)
+        relu_SE_1_16_1  = F.relu(conv_SE_1_16_1)
+        conv_SE_1_16_2  = self.conv_SE_1_16_2(relu_SE_1_16_1)
+        sigm_SE_1_16    = F.sigmoid(conv_SE_1_16_2)
+        reshape_SE_1_16 = torch.reshape(input = sigm_SE_1_16, shape = (1,1024,1,1))
+        scale_SE_1_16   = concat_4_24 * reshape_SE_1_16
+		conv_SE_1_16    = self.conv_SE_1_16(scale_SE_1_16)
+		bn_SE_1_16      = self.bn_SE_1_16(prelu_SE_1_16)
+		#########################################
+
+        ################ BLOCK 2 ################
+		concat_1_16d    = torch.cat((bn_1_16d, bn_SE_1_16,), 1)
+
         conv_1_16_1d_pad = F.pad(concat_1_16d, (1, 1, 1, 1))
         conv_1_16_1d    = self.conv_1_16_1d(conv_1_16_1d_pad)
         prelu_1_16_1d   = F.prelu(conv_1_16_1d, torch.from_numpy(_weights_dict['prelu_1/16_1d']['weights']))
         bn_1_16_1d      = self.bn_1_16_1d(prelu_1_16_1d)
+
         conv_1_16_2d_pad = F.pad(bn_1_16_1d, (1, 1, 1, 1))
         conv_1_16_2d    = self.conv_1_16_2d(conv_1_16_2d_pad)
         prelu_1_16_2d   = F.prelu(conv_1_16_2d, torch.from_numpy(_weights_dict['prelu_1/16_2d']['weights']))
         bn_1_16_2d      = self.bn_1_16_2d(prelu_1_16_2d)
+
         conv_1_16_3d    = self.conv_1_16_3d(bn_1_16_2d)
         prelu_1_16_3d   = F.prelu(conv_1_16_3d, torch.from_numpy(_weights_dict['prelu_1/16_3d']['weights']))
         bn_1_16_3d      = self.bn_1_16_3d(prelu_1_16_3d)
+
+        deconv_1_8d		= self.deconv_1_8d(conv_1_16_3d)
         prelu_1_8d      = F.prelu(deconv_1_8d, torch.from_numpy(_weights_dict['prelu_1/8d']['weights']))
         bn_1_8d         = self.bn_1_8d(prelu_1_8d)
-        concat_1_8d     = torch.cat((bn_1_8d, bn_SE_1_8,), 1)
+
+        pool_SE_1_8     = F.avg_pool2d(concat_3_12, kernel_size=(60, 60), stride=(1, 1), padding=(0,), ceil_mode=False, count_include_pad=False)
+		conv_SE_1_8_1   = self.conv_SE_1_8_1(pool_SE_1_8)        
+		relu_SE_1_8_1   = F.relu(conv_SE_1_8_1)
+		conv_SE_1_8_2   = self.conv_SE_1_8_2(relu_SE_1_8_1)
+		sigm_SE_1_8     = F.sigmoid(conv_SE_1_8_2)
+		reshape_SE_1_8  = torch.reshape(input = sigm_SE_1_8, shape = (1,512,1,1))
+		scale_SE_1_8    = concat_3_12 * reshape_SE_1_8
+		conv_SE_1_8     = self.conv_SE_1_8(scale_SE_1_8)
+		prelu_SE_1_8    = F.prelu(conv_SE_1_8, torch.from_numpy(_weights_dict['prelu_SE_1/8']['weights']))
+		bn_SE_1_8       = self.bn_SE_1_8(prelu_SE_1_8)
+		#########################################
+
+        ################ BLOCK 3 ################																
+		concat_1_8d     = torch.cat((bn_1_8d, bn_SE_1_8,), 1)
+
         conv_1_8_1d_pad = F.pad(concat_1_8d, (1, 1, 1, 1))
         conv_1_8_1d     = self.conv_1_8_1d(conv_1_8_1d_pad)
         prelu_1_8_1d    = F.prelu(conv_1_8_1d, torch.from_numpy(_weights_dict['prelu_1/8_1d']['weights']))
         bn_1_8_1d       = self.bn_1_8_1d(prelu_1_8_1d)
+
         conv_1_8_2d_pad = F.pad(bn_1_8_1d, (1, 1, 1, 1))
         conv_1_8_2d     = self.conv_1_8_2d(conv_1_8_2d_pad)
         prelu_1_8_2d    = F.prelu(conv_1_8_2d, torch.from_numpy(_weights_dict['prelu_1/8_2d']['weights']))
         bn_1_8_2d       = self.bn_1_8_2d(prelu_1_8_2d)
+
         conv_1_8_3d     = self.conv_1_8_3d(bn_1_8_2d)
         prelu_1_8_3d    = F.prelu(conv_1_8_3d, torch.from_numpy(_weights_dict['prelu_1/8_3d']['weights']))
         bn_1_8_3d       = self.bn_1_8_3d(prelu_1_8_3d)
+
+        deconv_1_4d		= self.deconv_1_4d(conv_1_8_3d)
         prelu_1_4d      = F.prelu(deconv_1_4d, torch.from_numpy(_weights_dict['prelu_1/4d']['weights']))
         bn_1_4d         = self.bn_1_4d(prelu_1_4d)
-        concat_1_4d     = torch.cat((bn_1_4d, bn_SE_1_4,), 1)
+
+        pool_SE_1_4     = F.avg_pool2d(concat_2_6, kernel_size=(120, 120), stride=(1, 1), padding=(0,), ceil_mode=False, count_include_pad=False)
+		conv_SE_1_4_1   = self.conv_SE_1_4_1(pool_SE_1_4)
+		relu_SE_1_4_1   = F.relu(conv_SE_1_4_1)
+		conv_SE_1_4_2   = self.conv_SE_1_4_2(relu_SE_1_4_1)
+		sigm_SE_1_4     = F.sigmoid(conv_SE_1_4_2)
+		reshape_SE_1_4  = torch.reshape(input = sigm_SE_1_4, shape = (1,256,1,1))
+		scale_SE_1_4    = concat_2_6 * reshape_SE_1_4
+		conv_SE_1_4     = self.conv_SE_1_4(scale_SE_1_4)
+		prelu_SE_1_4    = F.prelu(conv_SE_1_4, torch.from_numpy(_weights_dict['prelu_SE_1/4']['weights']))
+		bn_SE_1_4       = self.bn_SE_1_4(prelu_SE_1_4)
+		#########################################
+
+        ################ BLOCK 4 ################														        
+		concat_1_4d     = torch.cat((bn_1_4d, bn_SE_1_4,), 1)
+
         conv_1_4_1d_pad = F.pad(concat_1_4d, (1, 1, 1, 1))
         conv_1_4_1d     = self.conv_1_4_1d(conv_1_4_1d_pad)
         prelu_1_4_1d    = F.prelu(conv_1_4_1d, torch.from_numpy(_weights_dict['prelu_1/4_1d']['weights']))
         bn_1_4_1d       = self.bn_1_4_1d(prelu_1_4_1d)
+
         conv_1_4_2d_pad = F.pad(bn_1_4_1d, (1, 1, 1, 1))
         conv_1_4_2d     = self.conv_1_4_2d(conv_1_4_2d_pad)
         prelu_1_4_2d    = F.prelu(conv_1_4_2d, torch.from_numpy(_weights_dict['prelu_1/4_2d']['weights']))
         bn_1_4_2d       = self.bn_1_4_2d(prelu_1_4_2d)
+
         conv_1_4_3d     = self.conv_1_4_3d(bn_1_4_2d)
         prelu_1_4_3d    = F.prelu(conv_1_4_3d, torch.from_numpy(_weights_dict['prelu_1/4_3d']['weights']))
         bn_1_4_3d       = self.bn_1_4_3d(prelu_1_4_3d)
+        #########################################
+
+        ################ PREDICTION AT 1/4 ################
         pred_1_4        = self.pred_1_4(bn_1_4_3d)
+
+        ################ UNSAMPLE THE PREDICTION FROM 1/4 TO 1/1 ################
+        pred_step_1 	= self.pred_step_1(pred_1_4)
         sigp_step_1     = F.sigmoid(pred_step_1)
+
+
+        ################ SECONDARY NETWORK (FINE DECODER) STARTS HERE ################
         concat_step_1   = torch.cat((concat_input, sigp_step_1,), 1)
+
+        ################ ATROUS POOLING BLOCK 1 ################
         conv_atrous1_1_pad = F.pad(concat_step_1, (1, 1, 1, 1))
         conv_atrous1_1  = self.conv_atrous1_1(conv_atrous1_1_pad)
-        conv_atrous2_1_pad = F.pad(concat_step_1, (2, 2, 2, 2))
-        conv_atrous2_1  = self.conv_atrous2_1(conv_atrous2_1_pad)
-        conv_atrous3_1_pad = F.pad(concat_step_1, (3, 3, 3, 3))
-        conv_atrous3_1  = self.conv_atrous3_1(conv_atrous3_1_pad)
         prelu_atrous1_1 = F.prelu(conv_atrous1_1, torch.from_numpy(_weights_dict['prelu_atrous1_1']['weights']))
-        prelu_atrous2_1 = F.prelu(conv_atrous2_1, torch.from_numpy(_weights_dict['prelu_atrous2_1']['weights']))
-        prelu_atrous3_1 = F.prelu(conv_atrous3_1, torch.from_numpy(_weights_dict['prelu_atrous3_1']['weights']))
         bn_atrous1_1    = self.bn_atrous1_1(prelu_atrous1_1)
-        bn_atrous2_1    = self.bn_atrous2_1(prelu_atrous2_1)
-        bn_atrous3_1    = self.bn_atrous3_1(prelu_atrous3_1)
+
         conv_atrous1_2_pad = F.pad(bn_atrous1_1, (1, 1, 1, 1))
         conv_atrous1_2  = self.conv_atrous1_2(conv_atrous1_2_pad)
+        prelu_atrous1_2 = F.prelu(conv_atrous1_2, torch.from_numpy(_weights_dict['prelu_atrous1_2']['weights']))
+        bn_atrous1_2    = self.bn_atrous1_2(prelu_atrous1_2)
+
+        conv_atrous1_3  = self.conv_atrous1_3(bn_atrous1_2)
+        prelu_atrous1_3 = F.prelu(conv_atrous1_3, torch.from_numpy(_weights_dict['prelu_atrous1_3']['weights']))
+        bn_atrous1_3    = self.bn_atrous1_3(prelu_atrous1_3)
+        ########################################################
+
+        ################ ATROUS POOLING BLOCK 2 ################
+        conv_atrous2_1_pad = F.pad(concat_step_1, (2, 2, 2, 2))
+        conv_atrous2_1  = self.conv_atrous2_1(conv_atrous2_1_pad)
+        prelu_atrous2_1 = F.prelu(conv_atrous2_1, torch.from_numpy(_weights_dict['prelu_atrous2_1']['weights']))
+        bn_atrous2_1    = self.bn_atrous2_1(prelu_atrous2_1)
+
         conv_atrous2_2_pad = F.pad(bn_atrous2_1, (1, 1, 1, 1))
         conv_atrous2_2  = self.conv_atrous2_2(conv_atrous2_2_pad)
+        prelu_atrous2_2 = F.prelu(conv_atrous2_2, torch.from_numpy(_weights_dict['prelu_atrous2_2']['weights']))
+        bn_atrous2_2    = self.bn_atrous2_2(prelu_atrous2_2)
+
+        conv_atrous2_3  = self.conv_atrous2_3(bn_atrous2_2)
+        prelu_atrous2_3 = F.prelu(conv_atrous2_3, torch.from_numpy(_weights_dict['prelu_atrous2_3']['weights']))
+        bn_atrous2_3    = self.bn_atrous2_3(prelu_atrous2_3)
+        ########################################################
+
+        ################ ATROUS POOLING BLOCK 3 ################
+        conv_atrous3_1_pad = F.pad(concat_step_1, (3, 3, 3, 3))
+        conv_atrous3_1  = self.conv_atrous3_1(conv_atrous3_1_pad)
+        prelu_atrous3_1 = F.prelu(conv_atrous3_1, torch.from_numpy(_weights_dict['prelu_atrous3_1']['weights']))
+        bn_atrous3_1    = self.bn_atrous3_1(prelu_atrous3_1)
+
+        
         conv_atrous3_2_pad = F.pad(bn_atrous3_1, (1, 1, 1, 1))
         conv_atrous3_2  = self.conv_atrous3_2(conv_atrous3_2_pad)
-        prelu_atrous1_2 = F.prelu(conv_atrous1_2, torch.from_numpy(_weights_dict['prelu_atrous1_2']['weights']))
-        prelu_atrous2_2 = F.prelu(conv_atrous2_2, torch.from_numpy(_weights_dict['prelu_atrous2_2']['weights']))
-        prelu_atrous3_2 = F.prelu(conv_atrous3_2, torch.from_numpy(_weights_dict['prelu_atrous3_2']['weights']))
-        bn_atrous1_2    = self.bn_atrous1_2(prelu_atrous1_2)
-        bn_atrous2_2    = self.bn_atrous2_2(prelu_atrous2_2)
+       	prelu_atrous3_2 = F.prelu(conv_atrous3_2, torch.from_numpy(_weights_dict['prelu_atrous3_2']['weights']))
         bn_atrous3_2    = self.bn_atrous3_2(prelu_atrous3_2)
-        conv_atrous1_3  = self.conv_atrous1_3(bn_atrous1_2)
-        conv_atrous2_3  = self.conv_atrous2_3(bn_atrous2_2)
+        
+        
         conv_atrous3_3  = self.conv_atrous3_3(bn_atrous3_2)
-        prelu_atrous1_3 = F.prelu(conv_atrous1_3, torch.from_numpy(_weights_dict['prelu_atrous1_3']['weights']))
-        prelu_atrous2_3 = F.prelu(conv_atrous2_3, torch.from_numpy(_weights_dict['prelu_atrous2_3']['weights']))
         prelu_atrous3_3 = F.prelu(conv_atrous3_3, torch.from_numpy(_weights_dict['prelu_atrous3_3']['weights']))
-        bn_atrous1_3    = self.bn_atrous1_3(prelu_atrous1_3)
-        bn_atrous2_3    = self.bn_atrous2_3(prelu_atrous2_3)
         bn_atrous3_3    = self.bn_atrous3_3(prelu_atrous3_3)
+        ########################################################
+
+        ################ CONCAT + SQUEEZ & EXCITATION ################
         concat_step_2   = torch.cat((bn_atrous1_3, bn_atrous2_3, bn_atrous3_3,), 1)
         gpool_s2        = F.avg_pool2d(concat_step_2, kernel_size=(480, 480), stride=(1, 1), padding=(0,), ceil_mode=False, count_include_pad=False)
         conv_s2_down    = self.conv_s2_down(gpool_s2)
@@ -949,13 +1025,22 @@ class KitModel(nn.Module):
         sig_s2_up       = F.sigmoid(conv_s2_up)
         resh_s2         = torch.reshape(input = sig_s2_up, shape = (1,48,1,1))
         scale_s2        = concat_step_2 * resh_s2
+        ##############################################################
+
+        ################ PREDICTION ################
         conv_p1_1_pad   = F.pad(scale_s2, (1, 1, 1, 1))
         conv_p1_1       = self.conv_p1_1(conv_p1_1_pad)
         prelu_p1_1      = F.prelu(conv_p1_1, torch.from_numpy(_weights_dict['prelu_p1_1']['weights']))
         bn_p1_1         = self.bn_p1_1(prelu_p1_1)
         pred_step_2     = self.pred_step_2(bn_p1_1)
+        ############################################
+
+        ################ PREDICTION ################
         sig_pred        = F.sigmoid(pred_step_2)
+        ############################################
         return sig_pred
+
+        ################ SECONDARY NETWORK (FINE DECORDER) ENDS HERE ################
 
 
     @staticmethod
